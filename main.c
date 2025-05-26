@@ -37,6 +37,17 @@ uint32_t le32(uint32_t x) {
            ((x & 0xFF0000) >> 8) | ((x & 0xFF000000) >> 24);
 }
 
+uint64_t le64(uint64_t x) {
+    return ((x & 0x00000000000000FFULL) << 0)  |
+           ((x & 0x000000000000FF00ULL) << 8)  |
+           ((x & 0x0000000000FF0000ULL) << 16) |
+           ((x & 0x00000000FF000000ULL) << 24) |
+           ((x & 0x000000FF00000000ULL) << 32) |
+           ((x & 0x0000FF0000000000ULL) << 40) |
+           ((x & 0x00FF000000000000ULL) << 48) |
+           ((x & 0xFF00000000000000ULL) << 56);
+}
+
 int main(int argc, char *argv[]){
     if (argc!=2){
         printf("Usage: %s <ubifs_image>\n", argv[0]);
@@ -61,7 +72,7 @@ int main(int argc, char *argv[]){
                 node_type_str(le32(header.node_type)),
                 le32(header.node_type),
                 le32(header.len),
-                le32(header.sqnum));
+                le64(header.sqnum));
             
                 fseek(fp, le32(header.len) - sizeof(header), SEEK_CUR);
                 offset += le32(header.len);
