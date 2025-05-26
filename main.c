@@ -51,7 +51,7 @@ int main(int argc, char *argv[]){
     while(fread(&header, sizeof(header),1,fp) == 1){
         if (header.magic == UBIFS_NODE_MAGIC){
             // Aligned
-            print("Found node at offset 0x%lX: type=%s (%u), len=%u, sqnum=%lu\n",
+            printf("Found node at offset 0x%lX: type=%s (%u), len=%u, sqnum=%lu\n",
                 offset,
                 node_type_str(header.node_type),
                 header.node_type,
