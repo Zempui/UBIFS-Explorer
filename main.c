@@ -66,16 +66,28 @@ int main(int argc, char *argv[]){
 
     while(fread(&header, sizeof(header),1,fp) == 1){
         if (header.magic == UBIFS_NODE_MAGIC){
+            uint32_t n_type = le32(header.node_type);
+            uint32_t len = le32(header.len);
+            uint64_t seq_n = le64(header.sqnum);
             // Aligned
             printf("Found node at offset 0x%lX: type=%s (%u), len=%u, sqnum=%lu\n",
                 offset,
-                node_type_str(le32(header.node_type)),
-                le32(header.node_type),
-                le32(header.len),
-                le64(header.sqnum));
+                node_type_str(n_type),
+                n_type,
+                len,
+                seq_n
+            );
+        
+            printf("[DEBUG] offset 0x%lX: type=%s (%u), len=%u, sqnum=%lu\n",
+                offset,
+                node_type_str(header.node_type),
+                header.node_type,
+                header.len,
+                header.sqnum
+            );
             
-                fseek(fp, le32(header.len) - sizeof(header), SEEK_CUR);
-                offset += le32(header.len);
+            fseek(fp, len - sizeof(header), SEEK_CUR);
+            offset += len;
         }else{
             // Not aligned, scan byte by byte
             fseek(fp, 1, SEEK_CUR);
