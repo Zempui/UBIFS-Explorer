@@ -31,6 +31,11 @@ const char *node_type_str(uint8_t type) {
     }
 }
 
+// Little-endian conversion
+uint32_t le32(uint32_t x) {
+    return ((x & 0xFF) << 0) | ((x & 0xFF00) >> 8) |
+           ((x & 0xFF0000) >> 8) | ((x & 0xFF000000) >> 24);
+}
 
 int main(int argc, char *argv[]){
     if (argc!=2){
@@ -53,13 +58,13 @@ int main(int argc, char *argv[]){
             // Aligned
             printf("Found node at offset 0x%lX: type=%s (%u), len=%u, sqnum=%lu\n",
                 offset,
-                node_type_str(header.node_type),
-                header.node_type,
-                header.len,
-                header.sqnum);
+                node_type_str(le32(header.node_type)),
+                le32(header.node_type),
+                le32(header.len),
+                le32(header.sqnum));
             
-                fseek(fp, header.len - sizeof(header), SEEK_CUR);
-                offset += header.len;
+                fseek(fp, le32(header.len) - sizeof(header), SEEK_CUR);
+                offset += le32(header.len);
         }else{
             // Not aligned, scan byte by byte
             fseek(fp, 1, SEEK_CUR);
