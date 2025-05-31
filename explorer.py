@@ -1,4 +1,11 @@
+"""
+UBIFS image explorer
+
+This script analyzes the internal structure of a UBIFS image and displays it to the user.
+"""
+
 from construct import Struct, Int32ul, Int8ul, Int64ul, Int16ul, Bytes, Array, Padding, GreedyBytes
+from pathlib import Path
 
 # UBIFS constants
 UBIFS_NODE_MAGIC = 0x06101831
@@ -23,7 +30,7 @@ UBIFSHeader:Struct = Struct(
 )
 
 # 0: INO_NODE
-UBIFSInoNode = Struct(
+UBIFSInoNode:Struct = Struct(
     "inum" / Int32ul,           # Inode number
     "block" / Int32ul,
     "crc" / Bytes(UBIFS_KEY_LEN-8),
@@ -55,6 +62,16 @@ UBIFSInoNode = Struct(
     "padding2" / Padding(26),
 
     "data" / GreedyBytes        # Remaining is inline data (if any)
+)
+
+UBIFSInoRouteNode:Struct = Struct(
+    "inum" / Int32ul,           # Inode number
+    "block" / Int32ul,
+    "crc" / Bytes(UBIFS_KEY_LEN-8),
+    "creat_sqnum" / Int64ul,    # Sequence number at time of creation
+    "size" / Int64ul,           # Inode size in bytes (amount of uncompressed data)
+
+    "data" / GreedyBytes
 )
 
 # 1: DATA_NODE
@@ -139,7 +156,7 @@ UBIFSSuperblockNode:Struct = Struct(
 )
 
 # 7: MST_NODE
-UBIFSMasterNode: Struct = Struct(
+UBIFSMasterNode:Struct = Struct(
     "highest_inum" / Int64ul,
     "cmt_no" / Int64ul,
     "flags" / Int32ul,
@@ -257,7 +274,7 @@ def process_node(node_type:str, payload_size:int, f) -> Struct:
                 if len(content) >= 84:
                     node = UBIFSInoNode.parse(content)
                 else:
-                    node = UBIFSUnknownNode.parse(content)
+                    node = UBIFSInoRouteNode.parse(content)
 
             elif(node_type=="DATA_NODE"): # ✅
                 node = UBIFSDataNode.parse(content)
@@ -440,5 +457,6 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
 
 
 if __name__ == "__main__":
-    (offsets, headers, nodes) = parse_ubifs_image("UBIFS-Explorer\\files.img")
+    (offsets, headers, nodes) = parse_ubifs_image(Path(input("\nPath (relative or absolute) to the UBIFS '.img' file:\n")))
+    # (offsets, headers, nodes) = parse_ubifs_image("UBIFS-Explorer\\files.img")
     node_visualizer(offsets, headers, nodes)

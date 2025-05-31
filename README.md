@@ -25,8 +25,54 @@ However, there are also some similarities with JFFS2:
 * Both JFFS2 and UBIFS support on-the-flight compression which makes it possible to fit great amounts of data on the flash.
 * Both are tolerant to unclean reboots and power-cuts. UBIFS automatically replays its journal and recovers from crashes, ensuring that the on-flash data structures are consistent.
 
+### UBIFS Nodes
+UBIFS uses different types of nodes, such as data nodes that store fragments of file content or inode nodes. The main types are: [^3]
+| Name | Meaning | Description |
+|------|---------|-------------|
+| INO_NODE | Inode node | stores metadata for files and directories. | 
+| DATA_NODE | Data node | contains actual file content. |
+| DENT_NODE | Directory entry node | links filenames to inode numbers. |
+| XENT_NODE | Extended attribute node | stores extended attributes for files. |
+| TRUN_NODE | Truncation node | used to truncate files. |
+| PAD_NODE | Padding node | used to pad unused space in logical erase blocks (LEBs). |
+| SB_NODE | Superblock node | contains filesystem-wide information.
+| MST_NODE | Master node | holds pointers to key filesystem structures.
+| REF_NODE | Reference node | used in the journal to reference other nodes. |
+| IDX_NODE | Index node | part of the indexing structure for fast lookup.
+| CS_NODE | Commit start node | marks the beginning of a commit operation. |
+| ORPH_NODE | Orphan node | tracks inodes that have been deleted but not yet purged. |
 
-## Refferences
+## Tools
+Several tools have been developed for the current project. In this section, their setup, as well as their usage, will be discussed.
+
+### Setup
+In order to install the requirements for these scripts to work:
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+### UBIFS image explorer
+The script `explorer.py` allows for the parsing of a UBIFS image, allowing the user to get access to all the information stored in the header and body of each node of the image.
+
+Its usage is simple: just execute the script with `python3 explorer.py` and you will be asked to provide the relative or absolute path to the UBIFS `.img` file. Once this is done, a menu with different options will pop up. Navigate the menu by introducing the number of the option you wish to select (i.e. if you want to choose option `[X]`, you will have to enter `X` and press enter), after this, you may choose the node you want to examine following the same steps. To exit the program, just enter the option `0` until you exit every menu.
+
+### UBIFS Filesystem reconstructor
+
+The script `reconstructor.py` reconstructs a filesystem from UBIFS nodes.
+It builds directory structures, file metadata, and extracts file contents.
+
+The filesystem reconstruction will follow this logical flow:
+    INO NODES   → Create file/dir metadata
+        ↓
+    DENT NODES  → Build directory structure and filename mappings
+        ↓
+    DATA NODES  → Reconstruct file contents
+        ↓
+    Final Assembly → Create the actual filesystem on disk
+
+Its usage is similar to the `explorer.py` script: just execute the script with `python3 reconstructor.py` and you will be asked to provide the relative or absolute path to the UBIFS `.img` file. After this, the script will automatically parse the file and reconstruct the filesystem in a folder named `reconstructed_fs`.
+
+## References
 [^1]: ["UBIFS - new flash file system" - LWN.net](https://lwn.net/Articles/275706/)
 
 [^2]: ["UBI File System" - docks.kernel.otg](https://docs.kernel.org/5.15/filesystems/ubifs.html)
