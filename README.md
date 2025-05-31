@@ -30,3 +30,5 @@ However, there are also some similarities with JFFS2:
 [^1]: ["UBIFS - new flash file system" - LWN.net](https://lwn.net/Articles/275706/)
 
 [^2]: ["UBI File System" - docks.kernel.otg](https://docs.kernel.org/5.15/filesystems/ubifs.html)
+
+[^3]: [UBIFS media source code](https://elixir.bootlin.com/linux/v6.15/source/fs/ubifs/ubifs-media.h)

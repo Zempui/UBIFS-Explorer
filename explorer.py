@@ -4,6 +4,8 @@ from construct import Struct, Int32ul, Int8ul, Int64ul, Int16ul, Bytes, Array, P
 UBIFS_NODE_MAGIC = 0x06101831
 UBIFS_HEADER_SIZE = 24
 UBIFS_KEY_LEN = 16
+UBIFS_MAX_HMAC_LEN = 64
+UBIFS_MAX_HASH_LEN = 64
 
 #############################
 #   [STRUCT DECLARATION]    #
@@ -20,60 +22,79 @@ UBIFSHeader:Struct = Struct(
 
 # 0: INO_NODE
 UBIFSInoNode = Struct(
-    "inum" / Int64ul,           # Inode number
-    "size" / Int64ul,           # File size
-    "atime_sec" / Int64ul,      # Access time (seconds)
-    "ctime_sec" / Int64ul,      # Change time (seconds)
-    "mtime_sec" / Int64ul,      # Modification time (seconds)
-    "atime_nsec" / Int32ul,     # Access time (nanoseconds)
-    "ctime_nsec" / Int32ul,     # Change time (nanoseconds)
-    "mtime_nsec" / Int32ul,     # Modification time (nanoseconds)
-    "nlink" / Int32ul,          # Number of hard links
+    "inum" / Int32ul,           # Inode number
+    "block" / Int32ul,
+    "crc" / Bytes(UBIFS_KEY_LEN-8),
+
+    "creat_sqnum" / Int64ul,    # Sequence number at time of creation
+    "size" / Int64ul,           # Inode size in bytes (amount of uncompressed data)
+
+    "atime_sec" / Int64ul,      # access time seconds
+    "ctime_sec" / Int64ul,      # creation time seconds
+    "mtime_sec" / Int64ul,      # modification time seconds
+    
+    "atime_nsec" / Int32ul,     # access time (ns)
+    "ctime_nsec" / Int32ul,     # creation time (ns)
+    "mtime_nsec" / Int32ul,     # modification time (ns)
+
+    "nlink" / Int32ul,          # number of hard links  
     "uid" / Int32ul,            # User ID
     "gid" / Int32ul,            # Group ID
-    "mode" / Int32ul,           # File mode (permissions + type)
-    "flags" / Int32ul,          # File flags
-    "compr_type" / Int8ul,      # Compression type
-    "padding" / Int8ul,         # Padding (usually 0)
-    "padding2" / Int16ul,       # More padding to align
-    "data" / GreedyBytes   # Remaining is inline data (if any)
+    "mode" / Int32ul,           # access flags  
+    "flags" / Int32ul,          # per-inode flags (%UBIFS_COMPR_FL, %UBIFS_SYNC_FL, etc)
+    
+    "data_len" /Int32ul,        # inode data length
+    "xattr_cnt" / Int32ul,      # count of extended attributes this inode has
+    "xattr_size" / Int32ul,     # summarized size of all extended attributes in bytes
+
+    "padding1" / Padding(4),
+    "xattr_names" / Int32ul,    # sum of lengths of all extended attribute names belonging to this inode
+    "compr_type" / Int16ul,     # compression type used for this inode
+    "padding2" / Padding(26),
+
+    "data" / GreedyBytes        # Remaining is inline data (if any)
 )
 
 # 1: DATA_NODE
 UBIFSDataNode:Struct = Struct(
-    "inode" / Int64ul,
-    "size" / Int32ul,
-    "compr_type" / Int8ul,
-    "encryption_type" / Int8ul,
-    "data_size" / Int16ul,
-    "data" / Bytes(lambda this: this.data_size)
+    "inum" / Int32ul,           # Inode number
+    "block" / Int32ul,
+    "crc" / Bytes(UBIFS_KEY_LEN-8),
+    "size" / Int32ul,           # uncompressed data size in bytes
+    "compr_type" / Int16ul,     # compression type (%UBIFS_COMPR_NONE, %UBIFS_COMPR_LZO, etc)
+    "compr_size" / Int16ul,     # compressed data size in bytes, only valid when data is encrypted
+    "data" / GreedyBytes
 )
 
 # 2: DENT_NODE
 UBIFSDentNode:Struct = Struct(
-    "inum" / Int64ul,
-    "type" / Int8ul,
-    "nlen" / Int8ul,
-    "padding" / Int16ul,
-    "name_hash" / Int32ul,
+    "key_inum" / Int32ul,           # Inode number
+    "block" / Int32ul,
+    "crc" / Bytes(UBIFS_KEY_LEN-8),
+    "inum" / Int64ul,       # Target Inode Number
+    "padding1" / Padding(1),
+    "type" / Int8ul,        # type of the target inode (%UBIFS_ITYPE_REG, %UBIFS_ITYPE_DIR, etc)
+    "nlen" / Int16ul,       # name length
+    "cookie" / Int32ul,     # A 32bits random number, used to construct a 64bits identifier.
     "name" / Bytes(lambda this: this.nlen)
 )
 
-# 3: XENT_NODE
+# 3: XENT_NODE TODO: Review it
 UBIFSXentNode:Struct = Struct(
     "inum" / Int64ul,
     "type" / Int8ul,
     "nlen" / Int8ul,
-    "padding" / Int16ul,
+    "padding" / Padding(2),
     "name_hash" / Int32ul,
     "name" / Bytes(lambda this: this.nlen)
 )
 
 # 4: TRUN_NODE
 UBIFSTrunNode:Struct = Struct(
-    "inum" / Int64ul,
-    "old_size" / Int64ul,
-    "new_size" / Int64ul
+    "inum" / Int32ul,
+    "padding" / Padding(12),
+    "old_size" / Int64ul,   # size before truncation
+    "new_size" / Int64ul    # size after truncation
 )
 
 # 5: PAD_NODE
@@ -84,34 +105,42 @@ UBIFSPadNode:Struct = Struct(
 
 # 6: SB_NODE
 UBIFSSuperblockNode:Struct = Struct(
-    "key_hash" / Int8ul,
-    "key_fmt" / Int8ul,
-    "flags" / Int16ul,
-    "min_io_size" / Int32ul,
-    "leb_size" / Int32ul,
-    "leb_cnt" / Int32ul,
-    "max_leb_cnt" / Int32ul,
-    "log_lebs" / Int32ul,
-    "lpt_lebs" / Int32ul,
-    "orph_lebs" / Int32ul,
-    "jhead_cnt" / Int32ul,
-    "fanout" / Int32ul,
-    "lsave_cnt" / Int32ul,
-    "fmt_version" / Int32ul,
-    "default_compr" / Int16ul,
-    "padding" / Int16ul,
-    "rp_uid" / Int32ul,
-    "rp_gid" / Int32ul,
-    "rp_size" / Int64ul,
-    "time_gran" / Int32ul,
-    "uuid" / Bytes(16),
-    "label" / Bytes(UBIFS_LABEL_LEN := 128)
+    "padding" / Padding(2),
+	"key_hash" / Int8ul,    # type of hash function used in keys
+	"key_fmt" / Int8ul,     # format of the key
+	"flags" / Int32ul,      # file-system flags (%UBIFS_FLG_BIGLPT, etc)
+	"min_io_size" / Int32ul,
+	"leb_size" / Int32ul,   # logical eraseblock size in bytes
+	"leb_cnt" / Int32ul,    # count of LEBs used by file-system
+	"max_leb_cnt" / Int32ul,
+	"max_bud_bytes" / Int64ul,
+	"log_lebs" / Int32ul,
+	"lpt_lebs" / Int32ul,
+	"orph_lebs" / Int32ul,
+	"jhead_cnt" / Int32ul,
+	"fanout" / Int32ul,
+	"lsave_cnt" / Int32ul,
+	"fmt_version" / Int32ul,
+	"default_compr" / Int16ul,
+	"padding1" / Padding(2),
+	"rp_uid" / Int32ul,
+	"rp_gid" / Int32ul,
+	"rp_size" / Int64ul,
+	"time_gran" / Int32ul,
+	"uuid" / Bytes(16),
+	"ro_compat_version" / Int32ul,
+	"hmac" / Bytes(UBIFS_MAX_HMAC_LEN),
+	"hmac_wkm" / Bytes(UBIFS_MAX_HMAC_LEN),
+	"hash_algo" / Int16ul,
+	"hash_mst" / Bytes(UBIFS_MAX_HASH_LEN),
+	"padding2" / Padding(3774)
 )
 
 # 7: MST_NODE
-UBIFSMasterNode:Struct = Struct(
+UBIFSMasterNode: Struct = Struct(
     "highest_inum" / Int64ul,
     "cmt_no" / Int64ul,
+    "flags" / Int32ul,
     "log_lnum" / Int32ul,
     "root_lnum" / Int32ul,
     "root_offs" / Int32ul,
@@ -120,9 +149,11 @@ UBIFSMasterNode:Struct = Struct(
     "ihead_lnum" / Int32ul,
     "ihead_offs" / Int32ul,
     "index_size" / Int64ul,
-    "leb_cnt" / Int32ul,
-    "empty_lebs" / Int32ul,
-    "idx_lebs" / Int32ul,
+    "total_free" / Int64ul,
+    "total_dirty" / Int64ul,
+    "total_used" / Int64ul,
+    "total_dead" / Int64ul,
+    "total_dark" / Int64ul,
     "lpt_lnum" / Int32ul,
     "lpt_offs" / Int32ul,
     "nhead_lnum" / Int32ul,
@@ -131,23 +162,30 @@ UBIFSMasterNode:Struct = Struct(
     "ltab_offs" / Int32ul,
     "lsave_lnum" / Int32ul,
     "lsave_offs" / Int32ul,
-    "padding" / Bytes(32)
+    "lscan_lnum" / Int32ul,
+    "empty_lebs" / Int32ul,
+    "idx_lebs" / Int32ul,
+    "leb_cnt" / Int32ul,
+    "hash_root_idx" / Bytes(UBIFS_MAX_HASH_LEN),
+    "hash_lpt" / Bytes(UBIFS_MAX_HASH_LEN),
+    "hmac" / Bytes(UBIFS_MAX_HMAC_LEN),
+    "padding" / Padding(152)
 )
 
 # 8: REF_NODE
 UBIFSRefNode:Struct = Struct(
-    "offs" / Int32ul,
     "lnum" / Int32ul,
+    "offs" / Int32ul,
     "jhead" / Int8ul,
     "padding" / Padding(7)
 )
 
 # Branch used in IDX_NODE
 UBIFSBranch:Struct = Struct(
-    "key" / Bytes(UBIFS_KEY_LEN),  # key length depends on UBIFS_KEY_LEN, typically 16 bytes
     "lnum" / Int32ul,
     "offs" / Int32ul,
-    "len" / Int32ul
+    "len" / Int32ul,
+    "key" / Bytes(lambda this: this.len)
 )
 
 # 9: IDX_NODE
@@ -159,16 +197,13 @@ UBIFSIdxNode:Struct = Struct(
 
 # 10: CS_NODE
 UBIFSCsNode:Struct = Struct(
-    "cmt_no" / Int64ul,
-    "log_hash" / Bytes(32),  # UBIFS_HASH_LEN is typically 32 (for SHA256)
-    "padding" / Bytes(12)    # Depends on alignment and total node size; may need adjustment
+    "cmt_no" / Int64ul
 )
 
 # 11: ORPH_NODE
 UBIFSOrphNode:Struct = Struct(
-    "cmt_no" / Int32ul,
-    "orph_cnt" / Int32ul,
-    "inums" / GreedyBytes # Array(lambda this: this.orph_cnt, Int64ul)
+    "cmt_no" / Int64ul,     # commit number (also top bit is set on the last node of the commit)
+    "inos" / GreedyBytes    # inode numbers of orphans
 )
 
 # UNKNOWN
@@ -197,8 +232,15 @@ UBIFS_NODE_TYPES:dict = {
 #############################
 #   [FUNCTION DECLARATION]  #
 #############################
-
 def process_node(node_type:str, payload_size:int, f) -> Struct:
+    """
+    This function will parse the content of a particular node into a 'Struct'
+    
+    Arguments:
+        node_type       - Either from 'UBIFS_NODE_TYPES' or 'UNKNOWN' 
+        payload_size    - Length of the payload of the node
+        f               - File from which the information is being parsed
+    """
     node:Struct = None
 
     if node_type == "UNKNOWN" or payload_size == 0:
@@ -257,7 +299,14 @@ def process_node(node_type:str, payload_size:int, f) -> Struct:
     return node
           
 
-def parse_ubifs_image(image_path, debug:bool = False) -> tuple[list[int], list[Struct], list[Struct]]:
+def parse_ubifs_image(image_path:str) -> tuple[list[int], list[Struct], list[Struct]]:
+    """
+    Reads the content of a UBIFS image and returns a tuple containing a list with the offsets of each node, its headers, and its contents.
+
+    Arguments:
+        image_path - Path to the UBIFS image file
+    """
+
     nodes:list[Struct] = []
     offsets:list[int] = []
     headers:list[Struct] = []
@@ -300,6 +349,11 @@ def parse_ubifs_image(image_path, debug:bool = False) -> tuple[list[int], list[S
 
 
 def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct]) -> None:
+    """
+    Function that creates an interactive menu in which the user may explore the content of each node's body and/or header.
+    
+    Note that the length of the three lists must be the same.
+    """
     cont:bool = True
     option:int = 0
     if (len(offsets) != len(headers) or len(headers) != len(nodes) or len(offsets) != len(nodes)):
@@ -345,8 +399,10 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
                         else:
                             print(f"\nContent of the Header of Node #{node} ({UBIFS_NODE_TYPES.get(headers[node-1].node_type, "UNKNOWN"):7} @ 0x{offsets[node-1]:06X}):")
                             for i,j in headers[node-1].items():
-                                if i != "_io":
+                                if i != "_io" and ("padding" not in i):
                                     print(f"\t[{i}]: {j}")
+                                elif ("padding" in i):
+                                    print(f"\t[{i}]: [...]")
 
                             input("\n[Press any key to continue...]")
                     
@@ -372,13 +428,15 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
                         else:
                             print(f"\nContent of the Node #{node} ({UBIFS_NODE_TYPES.get(headers[node-1].node_type, "UNKNOWN"):7} @ 0x{offsets[node-1]:06X}):")
                             for i,j in nodes[node-1].items():
-                                if i != "_io":
+                                if i != "_io" and ("padding" not in i):
                                     print(f"\t[{i}]: {j}")
+                                elif ("padding" in i):
+                                    print(f"\t[{i}]: [...]")
 
                             input("\n[Press any key to continue...]")
 
 
 
 if __name__ == "__main__":
-    (offsets, headers, nodes) = parse_ubifs_image("UBIFS-Explorer\\files.img", debug=True)
+    (offsets, headers, nodes) = parse_ubifs_image("UBIFS-Explorer\\files.img")
     node_visualizer(offsets, headers, nodes)
