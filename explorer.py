@@ -13,11 +13,13 @@ UBIFS_MAX_HASH_LEN = 64
 
 # UBIFS common node header
 UBIFSHeader:Struct = Struct(
-    "magic" / Int32ul,
-    "crc32" / Int32ul,
-    "sqnum" / Int64ul,
-    "len" / Int32ul,
-    "node_type" / Int32ul
+    "magic" / Int32ul,      # UBIFS node magic number (%UBIFS_NODE_MAGIC)
+    "crc32" / Int32ul,      # CRC-32 checksum of the node header
+    "sqnum" / Int64ul,      # sequence number
+    "len" / Int32ul,        # full node length
+    "node_type" / Int8ul,   # node type
+    "group_type" / Int8ul,  # node group type
+    "padding" / Padding(2)
 )
 
 # 0: INO_NODE
