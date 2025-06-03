@@ -6,6 +6,7 @@ This script analyzes the internal structure of a UBIFS image and displays it to 
 
 from construct import Struct, Int32ul, Int8ul, Int64ul, Int16ul, Bytes, Array, Padding, GreedyBytes
 from pathlib import Path
+from colorama import Fore, Back, Style
 
 # UBIFS constants
 UBIFS_NODE_MAGIC = 0x06101831
@@ -246,6 +247,21 @@ UBIFS_NODE_TYPES:dict = {
     11: "ORPH_NODE" # [Orphan node]: tracks inodes that have been deleted but not yet purged.
 }
 
+# Mapping of the node types to their display color
+UBIFS_NODE_COLORS:dict = {
+    0: Fore.RED,    # [Inode node]: stores metadata for files and directories.
+    1: Fore.GREEN,  # [Data node]: contains actual file content.
+    2: Fore.YELLOW, # [Directory entry node]: links filenames to inode numbers.
+    3: Fore.RESET, # [Extended attribute node]: stores extended attributes for files.
+    4: Fore.RESET, # [Truncation node]: used to truncate files.
+    5: Fore.RESET,  # [Padding node]: used to pad unused space in logical erase blocks (LEBs).
+    6: Fore.CYAN,   # [Superblock node]: contains filesystem-wide information.
+    7: Fore.LIGHTRED_EX,  # [Master node]: holds pointers to key filesystem structures.
+    8: Fore.RESET,  # [Reference node]: used in the journal to reference other nodes.
+    9: Fore.BLUE,  # [Index node]: part of the indexing structure for fast lookup.
+    10: Fore.RESET,  # [Commit start node]: marks the beginning of a commit operation.
+    11: Fore.MAGENTA # [Orphan node]: tracks inodes that have been deleted but not yet purged.
+}
 
 
 #############################
@@ -381,7 +397,7 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
     while(cont==True):
         options = {1:"Explore headers",2:"Explore content", 0:"Exit"}
         
-        print("Options:")
+        print(f"Options:")
         for i,j in options.items():
             print(f"\t[{i}]\t{j}")
         
@@ -401,9 +417,11 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
                 cont_1 = True
                 while(cont_1):
                     node=0
-                    print("Found nodes:")
+                    print(f"{Style.RESET_ALL}Found nodes:")
+                    color = Fore.RESET
                     for i in range(len(nodes)):
-                        print(f"\t[{i+1:3d}] - 0x{offsets[i]:06X} : {UBIFS_NODE_TYPES.get(headers[i].node_type, "UNKNOWN"):7} ({headers[i].node_type:02d})")
+                        color = UBIFS_NODE_COLORS.get(headers[i].node_type, Fore.LIGHTCYAN_EX)
+                        print(f"\t[{i+1:3d}] - 0x{offsets[i]:06X} : {color}{UBIFS_NODE_TYPES.get(headers[i].node_type, "UNKNOWN"):9}{Fore.RESET} ({headers[i].node_type:02d})")
                     print("\n\t[0] - EXIT")
                     try:
                         node = int(input(f"\nSelect one of the options above [0-{len(nodes)}]\n"))
@@ -416,7 +434,7 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
                         if node == 0:
                             cont_1 = False
                         else:
-                            print(f"\nContent of the Header of Node #{node} ({UBIFS_NODE_TYPES.get(headers[node-1].node_type, "UNKNOWN"):7} @ 0x{offsets[node-1]:06X}):")
+                            print(f"\nContent of the Header of Node #{node} ({UBIFS_NODE_TYPES.get(headers[node-1].node_type, "UNKNOWN"):9} @ 0x{offsets[node-1]:06X}):")
                             for i,j in headers[node-1].items():
                                 if i != "_io" and ("padding" not in i):
                                     print(f"\t[{i}]: {j}")
@@ -430,9 +448,11 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
                 node = 0
                 cont_1 = True
                 while(cont_1):
-                    print("Found nodes:")
+                    print(f"{Style.RESET_ALL}Found nodes:")
+                    color=Fore.RESET
                     for i in range(len(nodes)):
-                        print(f"\t[{i+1:3d}] - 0x{offsets[i]:06X} : {UBIFS_NODE_TYPES.get(headers[i].node_type, "UNKNOWN"):7} ({headers[i].node_type:02d})")
+                        color = UBIFS_NODE_COLORS.get(headers[i].node_type, Fore.LIGHTCYAN_EX)
+                        print(f"\t[{i+1:3d}] - 0x{offsets[i]:06X} : {color}{UBIFS_NODE_TYPES.get(headers[i].node_type, "UNKNOWN"):9}{Fore.RESET} ({headers[i].node_type:02d})")
                     print("\n\t[0] - EXIT")
                     try:
                         node = int(input(f"\nSelect one of the options above [0-{len(nodes)}]\n"))
@@ -445,7 +465,7 @@ def node_visualizer(offsets:list[int], headers:list[Struct], nodes:list[Struct])
                         if node == 0:
                             cont_1 = False
                         else:
-                            print(f"\nContent of the Node #{node} ({UBIFS_NODE_TYPES.get(headers[node-1].node_type, "UNKNOWN"):7} @ 0x{offsets[node-1]:06X}):")
+                            print(f"\nContent of the Node #{node} ({UBIFS_NODE_TYPES.get(headers[node-1].node_type, "UNKNOWN"):9} @ 0x{offsets[node-1]:06X}):")
                             for i,j in nodes[node-1].items():
                                 if i != "_io" and ("padding" not in i):
                                     print(f"\t[{i}]: {j}")
