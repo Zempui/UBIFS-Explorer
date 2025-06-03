@@ -143,38 +143,54 @@ class UBIFSFilesystemReconstructor:
             self.directory_tree[1] = {}
             self.inode_paths[1] = "/"
         
-        # Process directory entries
-        for parent_inum, entries in self.dir_entries.items():
-            if parent_inum not in self.directory_tree:
-                self.directory_tree[parent_inum] = {}
+        # Build paths iteratively to handle deep nesting
+        changed = True
+        while changed:
+            changed = False
             
-            for entry in entries:
-                # Skip . and .. entries
-                if entry.name in ['.', '..']:
+            # Process directory entries
+            for parent_inum, entries in self.dir_entries.items():
+                # Skip if parent path is not yet known
+                if parent_inum not in self.inode_paths:
                     continue
-                
-                self.directory_tree[parent_inum][entry.name] = entry.inum
-                
-                # Build full path
-                parent_path = self.inode_paths.get(parent_inum, "/")
-                if parent_path == "/":
-                    full_path = f"/{entry.name}"
-                else:
-                    full_path = f"{parent_path}/{entry.name}"
-                
-                self.inode_paths[entry.inum] = full_path
-                
-                # Track hard links (multiple paths to same inode)
-                if entry.inum in self.inodes:
-                    inode_info = self.inodes[entry.inum]
                     
-                    # Add to hard links tracking
-                    self.hard_links[entry.inum].append(full_path)
+                if parent_inum not in self.directory_tree:
+                    self.directory_tree[parent_inum] = {}
+                
+                for entry in entries:
+                    # Skip . and .. entries
+                    if entry.name in ['.', '..']:
+                        continue
                     
-                    # If this is a directory, initialize its tree entry
-                    if inode_info.type == self.UBIFS_ITYPE_DIR:
-                        if entry.inum not in self.directory_tree:
-                            self.directory_tree[entry.inum] = {}
+                    # Skip if we already processed this entry
+                    if entry.inum in self.inode_paths:
+                        continue
+                    
+                    self.directory_tree[parent_inum][entry.name] = entry.inum
+                    
+                    # Build full path
+                    parent_path = self.inode_paths[parent_inum]
+                    if parent_path == "/":
+                        full_path = f"/{entry.name}"
+                    else:
+                        full_path = f"{parent_path}/{entry.name}"
+                    
+                    self.inode_paths[entry.inum] = full_path
+                    changed = True
+                    
+                    print(f"  Built path: {full_path} (inum={entry.inum})")
+                    
+                    # Track hard links (multiple paths to same inode)
+                    if entry.inum in self.inodes:
+                        inode_info = self.inodes[entry.inum]
+                        
+                        # Add to hard links tracking
+                        self.hard_links[entry.inum].append(full_path)
+                        
+                        # If this is a directory, initialize its tree entry
+                        if inode_info.type == self.UBIFS_ITYPE_DIR:
+                            if entry.inum not in self.directory_tree:
+                                self.directory_tree[entry.inum] = {}
         
         # Extract symbolic link targets after all paths are built
         self._extract_symlink_targets()
@@ -251,15 +267,19 @@ class UBIFSFilesystemReconstructor:
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
         
-        # Create directories first
+        # Create all directories first (in order of depth)
+        dir_paths = []
         for inum, path in self.inode_paths.items():
-            if inum in self.inodes:
-                inode_info = self.inodes[inum]
-                
-                if inode_info.type == self.UBIFS_ITYPE_DIR:
-                    dir_path = self.output_dir / path.lstrip('/')
-                    dir_path.mkdir(parents=True, exist_ok=True)
-                    print(f"Created directory: {dir_path}")
+            if inum in self.inodes and self.inodes[inum].type == self.UBIFS_ITYPE_DIR:
+                dir_paths.append((path, inum))
+        
+        # Sort by path depth to create parent directories first
+        dir_paths.sort(key=lambda x: x[0].count('/'))
+        
+        for path, inum in dir_paths:
+            dir_path = self.output_dir / path.lstrip('/')
+            dir_path.mkdir(parents=True, exist_ok=True)
+            print(f"Created directory: {dir_path}")
         
         # Create regular files and symbolic links
         for inum, inode_info in self.inodes.items():
@@ -425,14 +445,17 @@ class UBIFSFilesystemReconstructor:
         
         print(f"{prefix}{'└── ' if is_last else '├── '}{name}{type_indicator}")
         
+        # Get children for this directory
         if inum in self.directory_tree:
             children = list(self.directory_tree[inum].items())
+            children.sort()  # Sort for consistent output
+            
             for i, (child_name, child_inum) in enumerate(children):
                 is_last_child = (i == len(children) - 1)
                 new_prefix = prefix + ("    " if is_last else "│   ")
                 self._print_tree(child_inum, new_prefix, is_last_child)
     
-    def process_parsed_nodes(self, headers:List[Struct], parsed_nodes: List[Struct]):
+    def process_parsed_nodes(self, headers:List[Struct], parsed_nodes: List[Struct], offsets: List[int]):
         """Process a list of parsed UBIFS nodes"""
         print("Processing parsed nodes...")
         
@@ -442,7 +465,7 @@ class UBIFSFilesystemReconstructor:
         data_nodes = []
         
         for i in range(len(parsed_nodes)):
-            print(f"Node #{i}: {UBIFS_NODE_TYPES.get(headers[i].node_type, "UNKNOWN"):8} @ 0x{offsets[i]:06X}")
+            print(f"Node #{i}: {UBIFS_NODE_TYPES.get(headers[i].node_type, 'UNKNOWN'):8} @ 0x{offsets[i]:06X}")
             node_type = headers[i].node_type
             
             if node_type == 0:  # INO_NODE
@@ -477,4 +500,4 @@ if __name__ == "__main__":
     (offsets, headers, nodes) = parse_ubifs_image(input("\nPath (relative or absolute) to the UBIFS '.img' file:\n"))
     #(offsets, headers, nodes) = parse_ubifs_image("UBIFS-Explorer\\files.img")
     reconstructor = UBIFSFilesystemReconstructor()
-    reconstructor.process_parsed_nodes(headers, nodes)
+    reconstructor.process_parsed_nodes(headers, nodes, offsets)
