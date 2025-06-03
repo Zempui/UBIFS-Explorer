@@ -88,6 +88,8 @@ class UBIFSFilesystemReconstructor:
         if parent_inum is None:
             parent_inum = 1  # Assume root directory
         
+        # TODO: if parent_inum is not a inode, you can recover the file
+
         dir_entry = DirEntry(
             inum=inum,
             name=name,
@@ -109,6 +111,8 @@ class UBIFSFilesystemReconstructor:
             block_num=block_num,
             data=data
         )
+
+        # TODO: if inum is not a inode, you can recover the file
         
         self.data_blocks[inum].append(data_block)
         print(f"\tAdded data block for inode {inum}: block {block_num}, size {len(data)}")
