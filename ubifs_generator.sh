@@ -7,8 +7,6 @@ if [ ! -d files ]; then
 	echo "Another content" > files/other.txt
 	mkdir files/folder
 	echo "This file is in a folder" > files/folder/folder.txt
-	ln files/folder/folder.txt files/hard_link
-	ln -s files/folder/folder.txt files/soft_link
 	echo "This file was removed" > files/removed.txt
 	rm files/removed.txt
 
