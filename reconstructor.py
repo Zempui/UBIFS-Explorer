@@ -118,7 +118,7 @@ class UBIFSFilesystemReconstructor:
         print(f"\tAdded data block for inode {inum}: block {block_num}, size {len(data)}")
 
     def build_directory_tree(self):
-        """Build the directory tree structure"""
+        """Build the directory tree structure using recursive approach"""
         print("\nBuilding directory tree...")
         
         # Initialize root directory
@@ -126,54 +126,45 @@ class UBIFSFilesystemReconstructor:
             self.directory_tree[1] = {}
             self.inode_paths[1] = "/"
         
-        # Process directory entries
-        for parent_inum, entries in self.dir_entries.items():
-            if parent_inum not in self.directory_tree:
-                self.directory_tree[parent_inum] = {}
-            
-            for entry in entries:
-                # Skip . and .. entries
-                if entry.name in ['.', '..']:
-                    continue
-                
-                self.directory_tree[parent_inum][entry.name] = entry.inum
-                
-                # Build full path
-                parent_path = self.inode_paths.get(parent_inum, "/")
-                if parent_path == "/":
-                    full_path = f"/{entry.name}"
-                else:
-                    full_path = f"{parent_path}/{entry.name}"
-                
-                self.inode_paths[entry.inum] = full_path
-                
-                # If this is a directory, initialize its tree entry
-                if entry.inum in self.inodes:
-                    inode_info = self.inodes[entry.inum]
-                    if inode_info.type == self.UBIFS_ITYPE_DIR:
-                        if entry.inum not in self.directory_tree:
-                            self.directory_tree[entry.inum] = {}
+        # Recursively build paths starting from root
+        self._build_paths_recursive(1, "/")
+        print("Directory tree built successfully")
 
-    def reconstruct_file_content(self, inum: int) -> bytes:
-        """Reconstruct file content from data blocks"""
-        if inum not in self.data_blocks:
-            return b''
+    def _build_paths_recursive(self, parent_inum: int, parent_path: str):
+        """Recursively build directory paths"""
+        if parent_inum not in self.dir_entries:
+            return
         
-        # Sort data blocks by block number
-        blocks = sorted(self.data_blocks[inum], key=lambda x: x.block_num)
+        # Initialize parent in directory tree if needed
+        if parent_inum not in self.directory_tree:
+            self.directory_tree[parent_inum] = {}
         
-        # Concatenate data
-        content = b''
-        for block in blocks:
-            content += block.data
-        
-        # Trim to actual file size if known
-        if inum in self.inodes:
-            file_size = self.inodes[inum].size
-            if file_size > 0 and len(content) > file_size:
-                content = content[:file_size]
-        
-        return content
+        for entry in self.dir_entries[parent_inum]:
+            # Skip . and .. entries
+            if entry.name in ['.', '..']:
+                continue
+            
+            # Add to directory tree
+            self.directory_tree[parent_inum][entry.name] = entry.inum
+            
+            # Build full path
+            if parent_path == "/":
+                full_path = f"/{entry.name}"
+            else:
+                full_path = f"{parent_path}/{entry.name}"
+            
+            self.inode_paths[entry.inum] = full_path
+            print(f"  Added: {full_path} (inum: {entry.inum})")
+            
+            # If this is a directory, initialize and recurse
+            if entry.inum in self.inodes:
+                inode_info = self.inodes[entry.inum]
+                if (inode_info.mode & 0xF000) == self.UBIFS_ITYPE_DIR:
+                    if entry.inum not in self.directory_tree:
+                        self.directory_tree[entry.inum] = {}
+                    # Recurse into subdirectory
+                    self._build_paths_recursive(entry.inum, full_path)
+
 
     def reconstruct_file_content(self, inum: int) -> bytes:
         """Reconstruct file content from data blocks"""
@@ -208,17 +199,17 @@ class UBIFSFilesystemReconstructor:
             if inum in self.inodes:
                 inode_info = self.inodes[inum]
                 
-                if inode_info.type == self.UBIFS_ITYPE_DIR:
+                if ((inode_info.mode & 0xF000) == self.UBIFS_ITYPE_DIR):
                     dir_path = self.output_dir / path.lstrip('/')
                     dir_path.mkdir(parents=True, exist_ok=True)
                     print(f"Created directory: {dir_path}")
-        
+
         # Create files
         for inum, path in self.inode_paths.items():
             if inum in self.inodes:
                 inode_info = self.inodes[inum]
                 
-                if inode_info.type == self.UBIFS_ITYPE_REG:
+                if ((inode_info.mode & 0xF000) == self.UBIFS_ITYPE_REG):
                     file_path = self.output_dir / path.lstrip('/')
                     
                     # Ensure parent directory exists
@@ -279,12 +270,12 @@ class UBIFSFilesystemReconstructor:
             node_type = headers[i].node_type
             
             if node_type == 0:  # INO_NODE
-                self.add_inode_node(nodes[i])
+                self.add_inode_node(parsed_nodes[i])
             elif node_type == 2:  # DENT_NODE
                 # You may need to determine parent_inum from context
-                self.add_dent_node(nodes[i])
+                self.add_dent_node(parsed_nodes[i], parsed_nodes[i]["key_inum"])
             elif node_type == 1:  # DATA_NODE
-                self.add_data_node(nodes[i])
+                self.add_data_node(parsed_nodes[i])
         
         # Build filesystem structure
         self.build_directory_tree()
