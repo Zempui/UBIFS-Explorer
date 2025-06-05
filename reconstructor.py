@@ -349,7 +349,8 @@ class UBIFSFilesystemReconstructor:
 
 
 if __name__ == "__main__":
-    (offsets, headers, nodes) = parse_ubifs_image(input("\nPath (relative or absolute) to the UBIFS '.img' file:\n"))
+    image = input("\nPath (relative or absolute) to the UBIFS '.img' file:\n")
+    (offsets, headers, nodes) = parse_ubifs_image(image)
     #(offsets, headers, nodes) = parse_ubifs_image("UBIFS-Explorer\\files.img")
-    reconstructor = UBIFSFilesystemReconstructor()
+    reconstructor = UBIFSFilesystemReconstructor(output_dir=(Path(image).stem))
     reconstructor.process_parsed_nodes(headers, nodes)
