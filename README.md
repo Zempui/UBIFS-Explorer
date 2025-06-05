@@ -73,7 +73,8 @@ The filesystem reconstruction will follow this logical flow:
 Its usage is similar to the `explorer.py` script: just execute the script with `python3 reconstructor.py` and you will be asked to provide the relative or absolute path to the UBIFS `.img` file. After this, the script will automatically parse the file and reconstruct the filesystem in a folder named `reconstructed_fs`.
 
 ## Known errors / future improvements
-* Symbolic and hard links are not supported
+* Hard links are not supported
+* Symbolic links are no supported in windows systems [WinError 1314]
 
 ## References
 [^1]: ["UBIFS - new flash file system" - LWN.net](https://lwn.net/Articles/275706/)

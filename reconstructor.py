@@ -46,11 +46,12 @@ class UBIFSFilesystemReconstructor:
         self.directory_tree: Dict[int, Dict] = {}       # inum -> {name: child_inum}
         self.inode_paths: Dict[int, str] = {}           # inum -> full_path
 
-    def add_inode_node(self, node_data:Struct):
+    def add_inode_node(self, node_data: Struct):
         """Add an inode node to the filesystem"""
         inum = node_data.inum
         size, mode, uid, gid, atime, mtime, ctime = 0,0,0,0,0,0,0
-        if (inum!=0):
+        
+        if (inum != 0):
             size = node_data.size
             mode = node_data.mode
             uid = node_data.uid
@@ -61,6 +62,18 @@ class UBIFSFilesystemReconstructor:
         
         # Determine file type from mode
         file_type = mode & 0xF000
+        
+        # For symbolic links, check if target is embedded in inode
+        symlink_target = ""
+        if file_type == self.UBIFS_ITYPE_LNK:
+            # check if there's a 'data' field in the inode
+            if hasattr(node_data, 'data') and node_data.data:
+                try:
+                    symlink_target = node_data.data.decode('utf-8').rstrip('\x00')
+                    print(f"\tFound symlink target in inode: '{symlink_target}'")
+                except:
+                    pass
+            
         
         file_info = FileInfo(
             inum=inum,
@@ -76,6 +89,13 @@ class UBIFSFilesystemReconstructor:
         )
         
         self.inodes[inum] = file_info
+        
+        # Store symlink target separately if found
+        if symlink_target:
+            if not hasattr(self, 'symlink_targets'):
+                self.symlink_targets = {}
+            self.symlink_targets[inum] = symlink_target
+        
         print(f"\tAdded inode {inum}: type={hex(file_type)}, size={size}")
 
     def add_dent_node(self, node_data:Struct, parent_inum: int = None):
@@ -229,6 +249,32 @@ class UBIFSFilesystemReconstructor:
                         pass  # Skip if we can't set permissions/times
                     
                     print(f"Created file: {file_path} ({len(content)} bytes)")
+                
+                elif ((inode_info.mode & 0xF000) == self.UBIFS_ITYPE_LNK):
+                    # Symbolic link
+                    link_path = self.output_dir / path.lstrip('/')
+                    
+                    # Ensure parent directory exists
+                    link_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Get the link target
+                    target = self.symlink_targets[inum]
+                    
+                    if target:
+                        try:
+                            # Remove existing file/link if it exists
+                            if link_path.exists() or link_path.is_symlink():
+                                link_path.unlink()
+                            
+                            # Create the symbolic link
+                            os.symlink(target, link_path)
+                            
+                            print(f"Created symlink: {link_path} -> {target}")
+                            
+                        except OSError as e:
+                            print(f"Failed to create symlink {link_path} -> {target}: {e}")
+                    else:
+                        print(f"Warning: Empty target for symlink {link_path}")
 
     def print_filesystem_info(self):
         """Print filesystem information"""
@@ -236,7 +282,18 @@ class UBIFSFilesystemReconstructor:
         print("FILESYSTEM RECONSTRUCTION SUMMARY")
         print("="*60)
         
+        # Count different file types
+        regular_files = sum(1 for info in self.inodes.values() 
+                        if (info.mode & 0xF000) == self.UBIFS_ITYPE_REG)
+        directories = sum(1 for info in self.inodes.values() 
+                        if (info.mode & 0xF000) == self.UBIFS_ITYPE_DIR)
+        symlinks = sum(1 for info in self.inodes.values() 
+                    if (info.mode & 0xF000) == self.UBIFS_ITYPE_LNK)
+        
         print(f"Total inodes: {len(self.inodes)}")
+        print(f"  - Regular files: {regular_files}")
+        print(f"  - Directories: {directories}")
+        print(f"  - Symbolic links: {symlinks}")
         print(f"Total directory entries: {sum(len(entries) for entries in self.dir_entries.values())}")
         print(f"Total data blocks: {sum(len(blocks) for blocks in self.data_blocks.values())}")
         
@@ -252,7 +309,15 @@ class UBIFSFilesystemReconstructor:
         
         name = Path(self.inode_paths[inum]).name or "/"
         
-        print(f"{prefix}{'└── ' if is_last else '├── '}{name}")
+        # Add link target information for symbolic links
+        extra_info = ""
+        if inum in self.inodes:
+            inode_info = self.inodes[inum]
+            if (inode_info.mode & 0xF000) == self.UBIFS_ITYPE_LNK:
+                target = self.symlink_targets[inum]
+                extra_info = f" -> {target}" if target else " -> <empty>"
+        
+        print(f"{prefix}{'└── ' if is_last else '├── '}{name}{extra_info}")
         
         if inum in self.directory_tree:
             children = list(self.directory_tree[inum].items())
