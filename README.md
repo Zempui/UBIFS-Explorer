@@ -47,9 +47,6 @@ UBIFS deleted file recovery is challenging but possible by understanding its str
 * The first one would be to look for **`ORPH_NODES`** that may reference **recently deleted files**. These nodes may contain the `INODE` numbers of files that were unlinked but that may still have data, which may be cross-referenced with the orphan area of the superblock and may allow to check whether the corresponding `INO_NODES` still exist.
 * Another possible technique would be to analyse the **directory entry history**, looking for `DENT_NODES` that may reference `INODES` that are no longer in active directories, checking the *Logical Erase Block* (LEB) garbage collector history, or checking for `DENT_NODES` that may still exist in uncommited aread
 
-The recovery process for each potentially recoverable file would be the following:
-TODO: FINISH THIS
-
 
 
 ## Tools
