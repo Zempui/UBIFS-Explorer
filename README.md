@@ -29,18 +29,28 @@ However, there are also some similarities with JFFS2:
 UBIFS uses different types of nodes, such as data nodes that store fragments of file content or inode nodes. The main types are: [^3]
 | Name | Meaning | Description |
 |------|---------|-------------|
-| INO_NODE | Inode node | stores metadata for files and directories. | 
-| DATA_NODE | Data node | contains actual file content. |
-| DENT_NODE | Directory entry node | links filenames to inode numbers. |
-| XENT_NODE | Extended attribute node | stores extended attributes for files. |
-| TRUN_NODE | Truncation node | used to truncate files. |
-| PAD_NODE | Padding node | used to pad unused space in logical erase blocks (LEBs). |
-| SB_NODE | Superblock node | contains filesystem-wide information.
-| MST_NODE | Master node | holds pointers to key filesystem structures.
-| REF_NODE | Reference node | used in the journal to reference other nodes. |
-| IDX_NODE | Index node | part of the indexing structure for fast lookup.
-| CS_NODE | Commit start node | marks the beginning of a commit operation. |
-| ORPH_NODE | Orphan node | tracks inodes that have been deleted but not yet purged. |
+| INO_NODE | Inode node | Stores metadata for files and directories. | 
+| DATA_NODE | Data node | Contains actual file content. |
+| DENT_NODE | Directory entry node | Links filenames to inode numbers. |
+| XENT_NODE | Extended attribute node | Stores extended attributes for files. |
+| TRUN_NODE | Truncation node | Used to truncate files. |
+| PAD_NODE | Padding node | Used to pad unused space in logical erase blocks (LEBs). |
+| SB_NODE | Superblock node | Contains filesystem-wide information.
+| MST_NODE | Master node | Holds pointers to key filesystem structures.
+| REF_NODE | Reference node | Used in the journal to reference other nodes. |
+| IDX_NODE | Index node | Part of the indexing structure for fast lookup.
+| CS_NODE | Commit start node | Marks the beginning of a commit operation. |
+| ORPH_NODE | Orphan node | Tracks inodes that have been deleted but not yet purged (unlinked but still open). |
+
+### File deletion in UBIFS
+UBIFS deleted file recovery is challenging but possible by understanding its structure and metadata organization. There are several techniques that may be used for this purspose:
+* The first one would be to look for **`ORPH_NODES`** that may reference **recently deleted files**. These nodes may contain the `INODE` numbers of files that were unlinked but that may still have data, which may be cross-referenced with the orphan area of the superblock and may allow to check whether the corresponding `INO_NODES` still exist.
+* Another possible technique would be to analyse the **directory entry history**, looking for `DENT_NODES` that may reference `INODES` that are no longer in active directories, checking the *Logical Erase Block* (LEB) garbage collector history, or checking for `DENT_NODES` that may still exist in uncommited aread
+
+The recovery process for each potentially recoverable file would be the following:
+TODO: FINISH THIS
+
+
 
 ## Tools
 Several tools have been developed for the current project. In this section, their setup, as well as their usage, will be discussed.
@@ -50,6 +60,11 @@ In order to install the requirements for these scripts to work:
 ```bash
 python3 -m pip install -r requirements.txt
 ```
+
+### UBIFS image generator 
+The script `ubifs_generator.sh` generated a UBIFS image for the user to test the following scripts on. It may be editted in addition to `ubinize.cfg` to change the image's contents and/or properties.
+
+The script `clean.sh` helps to unmount and eliminate the generated UBIFS image.
 
 ### UBIFS image explorer
 The script `explorer.py` allows for the parsing of a UBIFS image, allowing the user to get access to all the information stored in the header and body of each node of the image.
@@ -62,6 +77,7 @@ The script `reconstructor.py` reconstructs a filesystem from UBIFS nodes.
 It builds directory structures, file metadata, and extracts file contents.
 
 The filesystem reconstruction will follow this logical flow:
+```
     INO NODES   → Create file/dir metadata
         ↓
     DENT NODES  → Build directory structure and filename mappings
@@ -69,12 +85,29 @@ The filesystem reconstruction will follow this logical flow:
     DATA NODES  → Reconstruct file contents
         ↓
     Final Assembly → Create the actual filesystem on disk
-
+```
 Its usage is similar to the `explorer.py` script: just execute the script with `python3 reconstructor.py` and you will be asked to provide the relative or absolute path to the UBIFS `.img` file. After this, the script will automatically parse the file and reconstruct the filesystem in a folder named `reconstructed_fs`.
+
+### Recovery of deleted files (Not implemented)
+The recovery of deleted files functionality is not implemented in this repository and is, instead, left as a future improvement to be developed. In this section, however, some guidelines on how to do it are provided:
+1. **Extract and Parse the Image**: In order to parse the UBIFS image structure, one can make use of the functions defined in `explorer.py`.
+2. **Scan for Orphaned Inodes**: Look for `ORPH_NODES` that reference recently deleted files; These nodes contain inode numbers of files that were unlinked but may still have data. One can cross-reference with the orphan area of the superblock in order to check if the corresponding INO_NODES still exist.
+3. **Analyze Directory Entry History**: Scan `DENT_NODES` to find deleted directory entries that reference inodes no longer in active directories. Checking the `LEB` (Logical Erase Block) garbage collection history may reveal deleted `DENT_NODES` that maight still exist in uncommited aread.
+
+4. **Inode Recovery Process**: For each potentially recoverable file:
+   * Locate `INO_NODE`: Find the inode metadata node
+   * Extract file attributes: Size, timestamps, permissions from `INO_NODE`
+   * Find `DATA_NODES`: Locate all data nodes belonging to this inode
+   * Reconstruct file: Piece together data nodes in correct order
+
+5. **Raw Data Scanning**: If metadata is corrupted, scan the entire image for `DATA_NODE` signatures, look for file headers/magic numbers in data nodes, and attempt to identify file types by content patterns.
+
+
 
 ## Known errors / future improvements
 * Hard links are not supported
 * Symbolic links are no supported in windows systems [WinError 1314]
+* Recovery of deleted files is not implemented
 
 ## References
 [^1]: ["UBIFS - new flash file system" - LWN.net](https://lwn.net/Articles/275706/)
